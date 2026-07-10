@@ -1,0 +1,61 @@
+name: 즉석 정보 브리핑
+
+on:
+  workflow_dispatch:   # 수동 실행 버튼 (웹/모바일 앱에서 Run workflow)
+
+jobs:
+  briefing:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 정보 수집 및 Discord 전송
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        run: |
+          # ---------- 1. 환율 조회 (실패해도 계속 진행) ----------
+          KRW_LINE="💵 환율: 조회 실패 ⚠️"
+          EX_JSON=$(curl -sf --max-time 10 "https://open.er-api.com/v6/latest/USD" || echo "")
+          if [ -n "$EX_JSON" ]; then
+            KRW=$(echo "$EX_JSON" | jq -r '.rates.KRW // empty')
+            if [ -n "$KRW" ]; then
+              KRW_FMT=$(echo "$KRW" | awk '{printf "%d", $1 + 0.5}' | sed ':a;s/\B[0-9]\{3\}\>/,&/;ta')
+              KRW_LINE="💵 환율: 1 USD = ${KRW_FMT}원"
+            fi
+          fi
+
+          # ---------- 2. 창원 날씨 조회 (실패해도 계속 진행) ----------
+          WEATHER_LINE="🌤️ 창원: 조회 실패 ⚠️"
+          WX_JSON=$(curl -sf --max-time 10 "https://api.open-meteo.com/v1/forecast?latitude=35.23&longitude=128.57&current=temperature_2m,weather_code&timezone=Asia%2FSeoul" || echo "")
+          if [ -n "$WX_JSON" ]; then
+            TEMP=$(echo "$WX_JSON" | jq -r '.current.temperature_2m // empty')
+            WCODE=$(echo "$WX_JSON" | jq -r '.current.weather_code // empty')
+            if [ -n "$TEMP" ]; then
+              case $WCODE in
+                0) WTEXT="맑음 ☀️" ;;
+                1|2) WTEXT="구름 조금 🌤️" ;;
+                3) WTEXT="흐림 ☁️" ;;
+                45|48) WTEXT="안개 🌫️" ;;
+                51|53|55|56|57) WTEXT="이슬비 🌦️" ;;
+                61|63|65|66|67) WTEXT="비 🌧️" ;;
+                71|73|75|77) WTEXT="눈 ❄️" ;;
+                80|81|82) WTEXT="소나기 🌧️" ;;
+                95|96|99) WTEXT="뇌우 ⛈️" ;;
+                *) WTEXT="상태 코드: $WCODE" ;;
+              esac
+              WEATHER_LINE="🌤️ 창원: ${TEMP}°C, ${WTEXT}"
+            fi
+          fi
+
+          # ---------- 3. 메시지 조립 ----------
+          NOW=$(TZ=Asia/Seoul date '+%Y-%m-%d %H:%M')
+          MESSAGE="📋 **오늘의 브리핑** — ${NOW}
+          ━━━━━━━━━━━━━━━
+          ${KRW_LINE}
+          ${WEATHER_LINE}
+          ━━━━━━━━━━━━━━━"
+
+          # ---------- 4. Discord 전송 ----------
+          jq -n --arg content "$MESSAGE" '{content: $content}' \
+            | curl -sf --max-time 10 \
+                -H "Content-Type: application/json" \
+                -d @- \
+                "$DISCORD_WEBHOOK"
