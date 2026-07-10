@@ -54,8 +54,14 @@ jobs:
           ━━━━━━━━━━━━━━━"
 
           # ---------- 4. Discord 전송 ----------
-          jq -n --arg content "$MESSAGE" '{content: $content}' \
-            | curl -sf --max-time 10 \
-                -H "Content-Type: application/json" \
-                -d @- \
-                "$DISCORD_WEBHOOK"
+          PAYLOAD=$(jq -n --arg content "$MESSAGE" '{content: $content}')
+          HTTP_CODE=$(curl -sS --max-time 10 \
+            -o /tmp/discord_resp.txt \
+            -w "%{http_code}" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD" \
+            "$DISCORD_WEBHOOK")
+          echo "HTTP 상태코드: $HTTP_CODE"
+          echo "Discord 응답 내용:"
+          cat /tmp/discord_resp.txt
+
