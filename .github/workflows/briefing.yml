@@ -56,12 +56,15 @@ jobs:
           # ---------- 4. Discord 전송 ----------
           PAYLOAD=$(jq -n --arg content "$MESSAGE" '{content: $content}')
           HTTP_CODE=$(curl -sS --max-time 10 \
-            -o /tmp/discord_resp.txt \
+            -o /dev/null \
             -w "%{http_code}" \
             -H "Content-Type: application/json" \
             -d "$PAYLOAD" \
             "$DISCORD_WEBHOOK")
-          echo "HTTP 상태코드: $HTTP_CODE"
-          echo "Discord 응답 내용:"
-          cat /tmp/discord_resp.txt
 
+          if [ "$HTTP_CODE" = "204" ]; then
+            echo "✅ Discord 전송 성공 (HTTP $HTTP_CODE)"
+          else
+            echo "❌ Discord 전송 실패 (HTTP $HTTP_CODE)"
+            exit 1
+          fi
